@@ -1,0 +1,24 @@
+# Project TODO
+
+- [x] Definir y aplicar la identidad visual oscura de Evox con acento verde lima `#c9ff4a`, tipografía legible y navegación de dashboard.
+- [x] Crear tablas Drizzle/MySQL para propiedades, tareas, evidencias, gastos y eventos de actividad, todas vinculadas de forma segura al usuario autenticado.
+- [x] Aplicar la migración de base de datos y verificar que el esquema persistente coincide con Drizzle.
+- [x] Verificar el esquema aplicado en MySQL mediante introspección de tablas, columnas e índices y documentar su coincidencia con Drizzle.
+- [x] Implementar helpers de datos que impidan lecturas o mutaciones cruzadas entre usuarios.
+- [x] Implementar el dashboard con métricas de propiedades activas, tareas abiertas, evidencias registradas y gasto aprobado.
+- [x] Implementar creación, listado, selección y estado operativo de propiedades.
+- [x] Implementar creación y cambio de estado de tareas por propiedad, con prioridad y fecha límite.
+- [x] Implementar registro de evidencias de tipo nota, foto o documento, con texto y URL opcional.
+- [x] Implementar registro de gastos y aprobación o rechazo exclusivamente manual mediante una acción humana autenticada.
+- [x] Impedir por contrato que cualquier automatización o IA apruebe o rechace gastos.
+- [x] Exigir una confirmación humana explícita en la interfaz y registrar el modo de decisión manual en cada aprobación o rechazo de gasto.
+- [x] Añadir un desafío de confirmación por sesión, de un solo uso y con vencimiento para cada decisión manual de gasto.
+- [x] Vincular el desafío manual al hash de la sesión OAuth activa y probar el rechazo entre sesiones distintas.
+- [x] Implementar reporte de propietario calculado a partir de datos persistidos, con tareas, evidencias, gasto aprobado y próximos pasos.
+- [x] Implementar historial de actividad append-only con actor, acción, timestamp y propiedad vinculada.
+- [x] Implementar autenticación Manus OAuth y estados de sesión claros en la interfaz.
+- [x] Añadir pruebas Vitest para aislamiento de datos, inmutabilidad de eventos y aprobación manual de gastos.
+- [x] Verificar la interfaz en escritorio y móvil, además de los estados de carga, vacío y error.
+- [x] Documentar una verificación funcional reproducible de la interfaz en escritorio y móvil, incluyendo estados de carga, vacío y error.
+- [x] Añadir controles de previsualización solo en desarrollo para comprobar los estados de carga y error sin alterar datos reales.
+- [ ] Guardar un checkpoint publicable y entregar instrucciones para publicar el sitio permanente.

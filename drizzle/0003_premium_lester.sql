@@ -1,0 +1,1 @@
+ALTER TABLE `expense_decision_challenges` ADD `sessionHash` varchar(64) NOT NULL;
