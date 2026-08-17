@@ -21,4 +21,18 @@
 - [x] Verificar la interfaz en escritorio y móvil, además de los estados de carga, vacío y error.
 - [x] Documentar una verificación funcional reproducible de la interfaz en escritorio y móvil, incluyendo estados de carga, vacío y error.
 - [x] Añadir controles de previsualización solo en desarrollo para comprobar los estados de carga y error sin alterar datos reales.
-- [ ] Guardar un checkpoint publicable y entregar instrucciones para publicar el sitio permanente.
+- [x] Guardar un checkpoint publicable y preparar instrucciones para publicar el sitio permanente.
+- [x] Entregar al usuario el checkpoint publicable y las instrucciones concretas para publicar el sitio permanente.
+- [x] Evaluar Pieces MCP para el flujo de trabajo del asistente, sin instalarlo ni conectarlo a datos del proyecto, y recomendar explícitamente no adoptarlo para este asistente por ahora.
+- [x] Conectar localmente el endpoint de Pieces MCP autorizado por el usuario y verificar sus herramientas sin consultar recuerdos ni actividad capturada.
+- [x] Establecer una sesión MCP local de Pieces en la PC conectada y listar herramientas sin recuperar memoria.
+- [x] Verificar e instalar Memco Shared Memory en la computadora conectada después de revisar requisitos, datos y permisos.
+- [ ] Autenticar y configurar Spark para un agente o IDE únicamente después de que el usuario elija el destino y complete el inicio de sesión.
+- [ ] Autenticar Spark para el flujo de trabajo del asistente en la PC conectada y verificar el acceso sin consultar memoria.
+- [ ] Completar la autenticación de Memco mediante el navegador del usuario sin que el asistente manipule credenciales o códigos.
+- [x] Registrar la autorización del usuario para recuperación automática de contexto técnico con PiecesOS, sin escritura automática de memoria.
+- [ ] Implementar recuperación automática con PiecesOS solo si la herramienta permite restringir técnicamente las fuentes a contenido no sensible del proyecto.
+- [x] Crear y validar una skill reutilizable para control seguro de la computadora Windows conectada del usuario.
+- [x] Auditar el portafolio actual de Contra y las pruebas técnicas disponibles para identificar vacíos de credibilidad comercial.
+- [x] Definir tres proyectos de portafolio prioritarios con alcance demostrable, propuesta de valor y vínculo a evidencia verificable.
+- [x] Redactar los textos de caso de estudio y la secuencia de publicación para Contra.
