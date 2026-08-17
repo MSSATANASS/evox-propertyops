@@ -1,7 +1,7 @@
 import { TRPCError } from "@trpc/server";
 import { createHash } from "crypto";
 import { z } from "zod";
-import { createEvidence, createExpense, createManualExpenseChallenge, createProperty, createTask, decideExpenseManually, getOwnerReport, listDashboard, updatePropertyStatus, updateTaskStatus } from "../db";
+import { createEvidence, createExpense, createManualExpenseChallenge, createProperty, createTask, decideExpenseManually, getNotificationPreferences, getOwnerReport, listDashboard, listNotifications, markAllNotificationsRead, markNotificationRead, updateNotificationPreferences, updatePropertyStatus, updateTaskStatus } from "../db";
 import { manualExpenseDecisionStatuses } from "../propertyOpsRules";
 import { protectedProcedure, router } from "../_core/trpc";
 
@@ -24,6 +24,18 @@ function sessionHashFromRequest(req: { headers: { cookie?: string; authorization
 
 export const propertyOpsRouter = router({
   dashboard: protectedProcedure.query(({ ctx }) => listDashboard(ctx.user.id)),
+  notificationPreferences: protectedProcedure.query(({ ctx }) => getNotificationPreferences(ctx.user.id).catch(translateError)),
+  updateNotificationPreferences: protectedProcedure.input(z.object({
+    propertyUpdates: z.boolean().optional(),
+    taskUpdates: z.boolean().optional(),
+    urgentTasks: z.boolean().optional(),
+    evidenceEvents: z.boolean().optional(),
+    expenseReview: z.boolean().optional(),
+    expenseDecisions: z.boolean().optional(),
+  }).refine(input => Object.keys(input).length > 0, "Selecciona al menos una preferencia")).mutation(({ ctx, input }) => updateNotificationPreferences(ctx.user.id, input).catch(translateError)),
+  notifications: protectedProcedure.query(({ ctx }) => listNotifications(ctx.user.id).catch(translateError)),
+  markNotificationRead: protectedProcedure.input(z.object({ notificationId: id })).mutation(({ ctx, input }) => markNotificationRead(ctx.user.id, input.notificationId).catch(translateError)),
+  markAllNotificationsRead: protectedProcedure.mutation(({ ctx }) => markAllNotificationsRead(ctx.user.id).catch(translateError)),
   createProperty: protectedProcedure.input(z.object({ name: z.string().trim().min(2).max(120), address: z.string().trim().min(3).max(1000), propertyType: z.string().trim().min(2).max(80), status: z.enum(propertyStatuses) })).mutation(({ ctx, input }) => {
     return createProperty(ctx.user.id, input).catch(translateError);
   }),

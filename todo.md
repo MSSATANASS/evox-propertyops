@@ -36,3 +36,11 @@
 - [x] Auditar el portafolio actual de Contra y las pruebas técnicas disponibles para identificar vacíos de credibilidad comercial.
 - [x] Definir tres proyectos de portafolio prioritarios con alcance demostrable, propuesta de valor y vínculo a evidencia verificable.
 - [x] Redactar los textos de caso de estudio y la secuencia de publicación para Contra.
+- [x] Definir eventos operativos notificables y preferencias por usuario sin incluir aprobación o rechazo automático de gastos.
+- [x] Implementar persistencia, consulta y actualización de preferencias de notificación aisladas por usuario.
+- [x] Integrar entrega de notificaciones personalizadas para eventos operativos habilitados.
+- [x] Añadir controles de interfaz para personalizar las notificaciones y comprobar sus estados.
+- [x] Cubrir la lógica con pruebas Vitest y documentar el comportamiento de las notificaciones.
+- [x] Añadir pruebas Vitest de persistencia simulada, aislamiento por usuario, creación de alertas y marcado de lectura.
+- [x] Añadir pruebas de preferencias persistentes, lectura aislada y creación de alertas desde flujos operativos con un adaptador de almacenamiento simulado.
+- [x] Reforzar el adaptador de pruebas para aplicar filtros y actualizaciones selectivas por usuario y notificación.

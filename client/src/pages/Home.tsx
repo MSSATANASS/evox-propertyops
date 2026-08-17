@@ -1,10 +1,14 @@
 import { useAuth } from "@/_core/hooks/useAuth";
 import { startLogin } from "@/const";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Switch } from "@/components/ui/switch";
 import { trpc } from "@/lib/trpc";
 import type { inferRouterOutputs } from "@trpc/server";
 import type { AppRouter } from "../../../server/routers";
 import {
+  Bell,
   Building2,
+  CheckCheck,
   ChevronRight,
   CircleDollarSign,
   ClipboardList,
@@ -15,6 +19,7 @@ import {
   MapPin,
   Plus,
   ShieldCheck,
+  Settings2,
   TriangleAlert,
   Wrench,
 } from "lucide-react";
@@ -37,10 +42,15 @@ type Decision = {
 
 type RouterOutput = inferRouterOutputs<AppRouter>;
 type OwnerReport = RouterOutput["propertyOps"]["ownerReport"];
+type UserNotification = RouterOutput["propertyOps"]["notifications"][number];
+type NotificationPreferenceKey = "propertyUpdates" | "taskUpdates" | "urgentTasks" | "evidenceEvents" | "expenseReview" | "expenseDecisions";
+type NotificationPreferences = RouterOutput["propertyOps"]["notificationPreferences"];
 
 export default function Home() {
   const { user, loading, isAuthenticated, logout } = useAuth();
   const dashboard = trpc.propertyOps.dashboard.useQuery(undefined, { enabled: isAuthenticated });
+  const notificationPreferences = trpc.propertyOps.notificationPreferences.useQuery(undefined, { enabled: isAuthenticated });
+  const notifications = trpc.propertyOps.notifications.useQuery(undefined, { enabled: isAuthenticated });
   const utils = trpc.useUtils();
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [propertyForm, setPropertyForm] = useState({ name: "", address: "", propertyType: "Casa", status: "active" as "active" | "maintenance" | "archived" });
@@ -49,7 +59,19 @@ export default function Home() {
   const [expenseForm, setExpenseForm] = useState({ description: "", amount: "" });
   const [decision, setDecision] = useState<Decision | null>(null);
 
-  const refresh = () => Promise.all([utils.propertyOps.dashboard.invalidate(), utils.propertyOps.ownerReport.invalidate()]);
+  const refresh = () => Promise.all([utils.propertyOps.dashboard.invalidate(), utils.propertyOps.ownerReport.invalidate(), utils.propertyOps.notifications.invalidate()]);
+  const updatePreferences = trpc.propertyOps.updateNotificationPreferences.useMutation({
+    onSuccess: () => { toast.success("Preferencias de notificación actualizadas"); utils.propertyOps.notificationPreferences.invalidate(); },
+    onError: error => toast.error(error.message),
+  });
+  const markNotificationRead = trpc.propertyOps.markNotificationRead.useMutation({
+    onSuccess: () => utils.propertyOps.notifications.invalidate(),
+    onError: error => toast.error(error.message),
+  });
+  const markAllNotificationsRead = trpc.propertyOps.markAllNotificationsRead.useMutation({
+    onSuccess: () => { toast.success("Notificaciones marcadas como leídas"); utils.propertyOps.notifications.invalidate(); },
+    onError: error => toast.error(error.message),
+  });
   const createProperty = trpc.propertyOps.createProperty.useMutation({
     onSuccess: () => { toast.success("Propiedad registrada"); setPropertyForm({ name: "", address: "", propertyType: "Casa", status: "active" }); refresh(); },
     onError: error => toast.error(error.message),
@@ -88,6 +110,7 @@ export default function Home() {
   }, [dashboard.data?.evidence, propertyTasks]);
   const propertyExpenses = useMemo(() => (dashboard.data?.expenses ?? []).filter(expense => expense.propertyId === propertyId), [dashboard.data?.expenses, propertyId]);
   const propertyEvents = useMemo(() => (dashboard.data?.events ?? []).filter(event => event.propertyId === propertyId), [dashboard.data?.events, propertyId]);
+  const unreadNotifications = useMemo(() => (notifications.data ?? []).filter(notification => !notification.readAt).length, [notifications.data]);
   const previewState = import.meta.env.DEV && typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("evox-preview") : null;
 
   if (previewState === "loading") return <LoadingScreen />;
@@ -103,7 +126,7 @@ export default function Home() {
     <div className="evox-grid fixed inset-0 pointer-events-none opacity-50" />
     <header className="relative z-10 flex h-16 items-center justify-between border-b border-white/10 bg-[#07100d]/85 px-4 backdrop-blur-xl lg:px-7">
       <div className="flex items-center gap-3"><Brand /><div className="hidden sm:block"><p className="text-sm font-medium">{user?.name || "Operador"}</p><p className="text-[11px] text-[#94a39b]">Sesión protegida</p></div></div>
-      <button onClick={() => logout()} className="evox-ghost inline-flex h-9 items-center gap-2 px-3 text-xs"><LogOut size={14} />Salir</button>
+      <div className="flex items-center gap-2"><NotificationCenter notifications={notifications.data ?? []} preferences={notificationPreferences.data} unreadCount={unreadNotifications} preferencesPending={updatePreferences.isPending} onPreferenceChange={(key, enabled) => updatePreferences.mutate({ [key]: enabled } as Partial<Record<NotificationPreferenceKey, boolean>>)} onMarkRead={notificationId => markNotificationRead.mutate({ notificationId })} onMarkAllRead={() => markAllNotificationsRead.mutate()} /><button onClick={() => logout()} className="evox-ghost inline-flex h-9 items-center gap-2 px-3 text-xs"><LogOut size={14} />Salir</button></div>
     </header>
 
     <div className="relative z-10 mx-auto grid max-w-[1600px] gap-5 p-4 lg:grid-cols-[265px_minmax(0,1fr)] lg:p-6">
@@ -138,6 +161,17 @@ export default function Home() {
 }
 
 function Brand() { return <div className="flex items-center gap-3"><div className="grid h-9 w-9 place-items-center rounded-xl bg-[#c9ff4a] text-[#0a130c]"><Building2 size={19} strokeWidth={2.5} /></div><div><p className="text-sm font-bold tracking-[-.04em]">evox</p><p className="-mt-1 font-mono text-[9px] uppercase tracking-[.18em] text-[#94a39b]">PropertyOps</p></div></div>; }
+function NotificationCenter({ notifications, preferences, unreadCount, preferencesPending, onPreferenceChange, onMarkRead, onMarkAllRead }: { notifications: UserNotification[]; preferences: NotificationPreferences | undefined; unreadCount: number; preferencesPending: boolean; onPreferenceChange: (key: NotificationPreferenceKey, enabled: boolean) => void; onMarkRead: (notificationId: number) => void; onMarkAllRead: () => void }) {
+  const preferenceItems: { key: NotificationPreferenceKey; label: string; description: string }[] = [
+    { key: "propertyUpdates", label: "Propiedades", description: "Altas y cambios de estado" },
+    { key: "taskUpdates", label: "Tareas", description: "Nuevas tareas y progreso" },
+    { key: "urgentTasks", label: "Urgentes", description: "Intervenciones prioritarias" },
+    { key: "evidenceEvents", label: "Evidencias", description: "Nuevos respaldos registrados" },
+    { key: "expenseReview", label: "Revisión de gastos", description: "Gastos pendientes de decisión humana" },
+    { key: "expenseDecisions", label: "Decisiones de gasto", description: "Confirmaciones manuales realizadas" },
+  ];
+  return <Popover><PopoverTrigger asChild><button aria-label={`Notificaciones${unreadCount ? `, ${unreadCount} sin leer` : ""}`} className="evox-ghost relative inline-grid h-9 w-9 place-items-center" title="Notificaciones"><Bell size={16} />{unreadCount > 0 && <span aria-hidden="true" className="absolute -right-0.5 -top-0.5 grid h-4 min-w-4 place-items-center rounded-full bg-[#c9ff4a] px-1 text-[9px] font-bold text-[#0a130c]">{unreadCount > 9 ? "9+" : unreadCount}</span>}</button></PopoverTrigger><PopoverContent align="end" className="w-[min(92vw,25rem)] border-white/10 bg-[#0d1a14] p-0 text-[#f1f4ed] shadow-2xl shadow-black/50"><div className="flex items-center justify-between border-b border-white/10 px-4 py-3"><div><p className="text-sm font-semibold">Notificaciones</p><p className="text-[11px] text-[#94a39b]">Eventos operativos de tu cuenta</p></div><button disabled={!unreadCount} onClick={onMarkAllRead} className="evox-ghost inline-flex items-center gap-1 px-2 py-1 text-[10px] disabled:opacity-40"><CheckCheck size={13} />Leer todo</button></div><div className="max-h-64 overflow-y-auto p-2">{notifications.length ? notifications.map(notification => <button key={notification.id} onClick={() => !notification.readAt && onMarkRead(notification.id)} className={`w-full rounded-xl p-3 text-left transition hover:bg-white/[.05] ${notification.readAt ? "opacity-65" : "bg-[#c9ff4a]/[.055]"}`}><div className="flex gap-2"><span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${notification.readAt ? "bg-[#60736a]" : "bg-[#c9ff4a] shadow-[0_0_10px_rgba(201,255,74,.65)]"}`} /><div><p className="text-xs font-semibold">{notification.title}</p><p className="mt-1 text-[11px] leading-4 text-[#a8b8af]">{notification.content}</p><p className="mt-2 font-mono text-[9px] uppercase tracking-[.1em] text-[#718279]">{dateTimeFormat.format(new Date(notification.createdAt))}</p></div></div></button>) : <p className="px-3 py-6 text-center text-xs leading-5 text-[#94a39b]">Todavía no hay alertas operativas.</p>}</div><div className="border-t border-white/10 px-4 py-3"><div className="flex items-center gap-2"><Settings2 size={14} className="text-[#c9ff4a]" /><div><p className="text-xs font-semibold">Personalizar alertas</p><p className="text-[10px] text-[#94a39b]">Solo informan; nunca deciden gastos.</p></div></div><div className="mt-3 grid gap-2">{preferenceItems.map(item => <div key={item.key} className="flex items-center justify-between gap-3 rounded-lg border border-white/[.07] px-3 py-2"><label htmlFor={`notification-${item.key}`} className="min-w-0"><span className="block text-[11px] font-medium">{item.label}</span><span className="block text-[10px] text-[#94a39b]">{item.description}</span></label><Switch id={`notification-${item.key}`} checked={preferences?.[item.key] ?? false} disabled={!preferences || preferencesPending} onCheckedChange={enabled => onPreferenceChange(item.key, enabled)} /></div>)}</div></div></PopoverContent></Popover>;
+}
 function Metric({ icon, label, value }: { icon: ReactNode; label: string; value: string }) { return <article className="evox-card evox-enter rounded-2xl p-4"><div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[.12em] text-[#94a39b]"><span className="text-[#c9ff4a]">{icon}</span>{label}</div><p className="mt-3 text-2xl font-semibold tracking-[-.045em]">{value}</p></article>; }
 function SectionHeading({ icon, eyebrow, title }: { icon: ReactNode; eyebrow: string; title: string }) { return <div className="flex items-center gap-3"><span className="grid h-8 w-8 place-items-center rounded-lg bg-[#c9ff4a]/10 text-[#c9ff4a]">{icon}</span><div><p className="font-mono text-[10px] uppercase tracking-[.15em] text-[#94a39b]">{eyebrow}</p><h2 className="mt-0.5 text-lg font-semibold tracking-[-.025em]">{title}</h2></div></div>; }
 function EmptyState({ message }: { message: string }) { return <p className="rounded-xl border border-dashed border-white/10 px-4 py-5 text-center text-sm leading-6 text-[#94a39b]">{message}</p>; }

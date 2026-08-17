@@ -1,4 +1,4 @@
-import { index, int, mysqlEnum, mysqlTable, text, timestamp, uniqueIndex, varchar } from "drizzle-orm/mysql-core";
+import { boolean, index, int, mysqlEnum, mysqlTable, text, timestamp, uniqueIndex, varchar } from "drizzle-orm/mysql-core";
 
 export const users = mysqlTable("users", {
   id: int("id").autoincrement().primaryKey(),
@@ -83,6 +83,35 @@ export const activityEvents = mysqlTable("activity_events", {
   metadata: text("metadata"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 }, table => [index("events_owner_property_created_idx").on(table.ownerId, table.propertyId, table.createdAt)]);
+
+export const notificationPreferences = mysqlTable("notification_preferences", {
+  id: int("id").autoincrement().primaryKey(),
+  ownerId: int("ownerId").notNull().references(() => users.id),
+  propertyUpdates: boolean("propertyUpdates").default(true).notNull(),
+  taskUpdates: boolean("taskUpdates").default(true).notNull(),
+  urgentTasks: boolean("urgentTasks").default(true).notNull(),
+  evidenceEvents: boolean("evidenceEvents").default(false).notNull(),
+  expenseReview: boolean("expenseReview").default(true).notNull(),
+  expenseDecisions: boolean("expenseDecisions").default(true).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, table => [uniqueIndex("notification_preferences_owner_unique").on(table.ownerId)]);
+
+export const userNotifications = mysqlTable("user_notifications", {
+  id: int("id").autoincrement().primaryKey(),
+  ownerId: int("ownerId").notNull().references(() => users.id),
+  propertyId: int("propertyId").references(() => properties.id),
+  category: mysqlEnum("category", ["property", "task", "evidence", "expense", "system"]).notNull(),
+  eventType: varchar("eventType", { length: 80 }).notNull(),
+  entityId: int("entityId"),
+  title: varchar("title", { length: 180 }).notNull(),
+  content: text("content").notNull(),
+  readAt: timestamp("readAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, table => [
+  index("notifications_owner_read_created_idx").on(table.ownerId, table.readAt, table.createdAt),
+  index("notifications_owner_created_idx").on(table.ownerId, table.createdAt),
+]);
 
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;

@@ -1,11 +1,16 @@
 import { and, desc, eq, gt, isNull } from "drizzle-orm";
 import { randomBytes } from "crypto";
 import { drizzle } from "drizzle-orm/mysql2";
-import { activityEvents, expenseDecisionChallenges, InsertUser, properties, propertyExpenses, propertyTasks, taskEvidence, users } from "../drizzle/schema";
+import { activityEvents, expenseDecisionChallenges, InsertUser, notificationPreferences, properties, propertyExpenses, propertyTasks, taskEvidence, userNotifications, users } from "../drizzle/schema";
 import { ENV } from "./_core/env";
+import { buildNotificationPlan, defaultNotificationPreferences, NotificationKind, NotificationPreferences, notificationReadAt } from "./notificationRules";
 import { assertAppendOnlyActivity, assertManualExpenseDecision, assertOwnedByUser, assertUsableExpenseChallenge, ManualExpenseDecisionStatus } from "./propertyOpsRules";
 
 let _db: ReturnType<typeof drizzle> | null = null;
+
+export function setDbForTests(db: ReturnType<typeof drizzle> | null) {
+  _db = db;
+}
 
 export async function getDb() {
   if (!_db && process.env.DATABASE_URL) {
@@ -63,6 +68,63 @@ async function getOwnedTask(ownerId: number, taskId: number) {
   return task;
 }
 
+function serializeNotificationPreferences(preferences: typeof notificationPreferences.$inferSelect): NotificationPreferences {
+  return {
+    propertyUpdates: preferences.propertyUpdates,
+    taskUpdates: preferences.taskUpdates,
+    urgentTasks: preferences.urgentTasks,
+    evidenceEvents: preferences.evidenceEvents,
+    expenseReview: preferences.expenseReview,
+    expenseDecisions: preferences.expenseDecisions,
+  };
+}
+
+export async function getNotificationPreferences(ownerId: number) {
+  const db = await databaseOrThrow();
+  let preferences = (await db.select().from(notificationPreferences).where(eq(notificationPreferences.ownerId, ownerId)).limit(1))[0];
+  if (!preferences) {
+    await db.insert(notificationPreferences).values({ ownerId, ...defaultNotificationPreferences }).onDuplicateKeyUpdate({ set: { ownerId } });
+    preferences = (await db.select().from(notificationPreferences).where(eq(notificationPreferences.ownerId, ownerId)).limit(1))[0];
+  }
+  if (!preferences) throw new Error("No se pudieron preparar las preferencias de notificación");
+  return serializeNotificationPreferences(preferences);
+}
+
+export async function updateNotificationPreferences(ownerId: number, input: Partial<NotificationPreferences>) {
+  const db = await databaseOrThrow();
+  await db.insert(notificationPreferences).values({ ownerId, ...defaultNotificationPreferences, ...input }).onDuplicateKeyUpdate({ set: input });
+  return getNotificationPreferences(ownerId);
+}
+
+export async function listNotifications(ownerId: number) {
+  const db = await databaseOrThrow();
+  return db.select().from(userNotifications).where(eq(userNotifications.ownerId, ownerId)).orderBy(desc(userNotifications.createdAt)).limit(30);
+}
+
+export async function markNotificationRead(ownerId: number, notificationId: number) {
+  const db = await databaseOrThrow();
+  const notification = (await db.select().from(userNotifications).where(and(eq(userNotifications.id, notificationId), eq(userNotifications.ownerId, ownerId))).limit(1))[0];
+  if (!notification) throw new Error("Notificación no encontrada");
+  const readAt = notificationReadAt(notification.ownerId, ownerId, notification.readAt, new Date());
+  if (!notification.readAt) await db.update(userNotifications).set({ readAt }).where(and(eq(userNotifications.id, notificationId), eq(userNotifications.ownerId, ownerId)));
+  return (await db.select().from(userNotifications).where(and(eq(userNotifications.id, notificationId), eq(userNotifications.ownerId, ownerId))).limit(1))[0];
+}
+
+export async function markAllNotificationsRead(ownerId: number) {
+  const db = await databaseOrThrow();
+  await db.update(userNotifications).set({ readAt: new Date() }).where(and(eq(userNotifications.ownerId, ownerId), isNull(userNotifications.readAt)));
+  return { success: true };
+}
+
+async function createNotificationIfEnabled(ownerId: number, input: { kind: NotificationKind; category: "property" | "task" | "evidence" | "expense"; propertyId?: number; entityId?: number; title: string; content: string }) {
+  const preferences = await getNotificationPreferences(ownerId);
+  const plan = buildNotificationPlan(preferences, input);
+  if (!plan) return null;
+  const db = await databaseOrThrow();
+  const result = await db.insert(userNotifications).values({ ownerId, propertyId: plan.propertyId ?? null, category: plan.category, eventType: plan.kind, entityId: plan.entityId ?? null, title: plan.title, content: plan.content });
+  return (await db.select().from(userNotifications).where(and(eq(userNotifications.id, Number(result[0].insertId)), eq(userNotifications.ownerId, ownerId))).limit(1))[0];
+}
+
 export async function listDashboard(ownerId: number) {
   const db = await databaseOrThrow();
   const [portfolio, tasks, evidence, expenses, rawEvents] = await Promise.all([
@@ -87,6 +149,7 @@ export async function createProperty(ownerId: number, input: { name: string; add
   const id = Number(result[0].insertId);
   const property = await getOwnedProperty(ownerId, id);
   await appendActivity(ownerId, id, "property", id, "property.created", { name: property.name });
+  await createNotificationIfEnabled(ownerId, { kind: "property.created", category: "property", propertyId: id, entityId: id, title: "Propiedad registrada", content: `${property.name} ya forma parte de tu portafolio operativo.` });
   return property;
 }
 
@@ -95,7 +158,9 @@ export async function updatePropertyStatus(ownerId: number, propertyId: number, 
   await getOwnedProperty(ownerId, propertyId);
   await db.update(properties).set({ status }).where(and(eq(properties.id, propertyId), eq(properties.ownerId, ownerId)));
   await appendActivity(ownerId, propertyId, "property", propertyId, "property.status_changed", { status });
-  return getOwnedProperty(ownerId, propertyId);
+  const property = await getOwnedProperty(ownerId, propertyId);
+  await createNotificationIfEnabled(ownerId, { kind: "property.status_changed", category: "property", propertyId, entityId: propertyId, title: "Estado de propiedad actualizado", content: `${property.name} cambió a estado ${status}.` });
+  return property;
 }
 
 export async function createTask(ownerId: number, input: { propertyId: number; title: string; description: string; priority: "low" | "medium" | "high" | "urgent"; dueAt?: number }) {
@@ -105,6 +170,9 @@ export async function createTask(ownerId: number, input: { propertyId: number; t
   const id = Number(result[0].insertId);
   const task = await getOwnedTask(ownerId, id);
   await appendActivity(ownerId, task.propertyId, "task", id, "task.created", { title: task.title, priority: task.priority });
+  await createNotificationIfEnabled(ownerId, task.priority === "urgent"
+    ? { kind: "task.urgent", category: "task", propertyId: task.propertyId, entityId: id, title: "Tarea urgente registrada", content: `${task.title} necesita atención prioritaria.` }
+    : { kind: "task.created", category: "task", propertyId: task.propertyId, entityId: id, title: "Nueva tarea operativa", content: `${task.title} fue añadida a la operación.` });
   return task;
 }
 
@@ -113,7 +181,9 @@ export async function updateTaskStatus(ownerId: number, taskId: number, status: 
   const task = await getOwnedTask(ownerId, taskId);
   await db.update(propertyTasks).set({ status }).where(and(eq(propertyTasks.id, taskId), eq(propertyTasks.ownerId, ownerId)));
   await appendActivity(ownerId, task.propertyId, "task", taskId, "task.status_changed", { status });
-  return getOwnedTask(ownerId, taskId);
+  const updatedTask = await getOwnedTask(ownerId, taskId);
+  await createNotificationIfEnabled(ownerId, { kind: "task.status_changed", category: "task", propertyId: updatedTask.propertyId, entityId: taskId, title: "Estado de tarea actualizado", content: `${updatedTask.title} cambió a ${status}.` });
+  return updatedTask;
 }
 
 export async function createEvidence(ownerId: number, input: { taskId: number; type: "note" | "photo" | "document"; description: string; fileUrl?: string }) {
@@ -123,6 +193,7 @@ export async function createEvidence(ownerId: number, input: { taskId: number; t
   const id = Number(result[0].insertId);
   const evidence = (await db.select().from(taskEvidence).where(and(eq(taskEvidence.id, id), eq(taskEvidence.ownerId, ownerId))).limit(1))[0];
   await appendActivity(ownerId, task.propertyId, "evidence", id, "evidence.created", { type: evidence.type });
+  await createNotificationIfEnabled(ownerId, { kind: "evidence.created", category: "evidence", propertyId: task.propertyId, entityId: id, title: "Evidencia registrada", content: `Se añadió evidencia de tipo ${evidence.type} a ${task.title}.` });
   return evidence;
 }
 
@@ -137,6 +208,7 @@ export async function createExpense(ownerId: number, input: { propertyId: number
   const id = Number(result[0].insertId);
   const expense = (await db.select().from(propertyExpenses).where(and(eq(propertyExpenses.id, id), eq(propertyExpenses.ownerId, ownerId))).limit(1))[0];
   await appendActivity(ownerId, input.propertyId, "expense", id, "expense.created", { amountCents: expense.amountCents });
+  await createNotificationIfEnabled(ownerId, { kind: "expense.pending_review", category: "expense", propertyId: input.propertyId, entityId: id, title: "Gasto pendiente de revisión humana", content: `${expense.description} requiere una decisión manual. Esta notificación no aprueba ni rechaza el gasto.` });
   return expense;
 }
 
@@ -165,7 +237,9 @@ export async function decideExpenseManually(ownerId: number, expenseId: number, 
   const decided = await db.update(propertyExpenses).set({ status, decisionByUserId: ownerId, decidedAt: new Date() }).where(and(eq(propertyExpenses.id, expenseId), eq(propertyExpenses.ownerId, ownerId), eq(propertyExpenses.status, "pending")));
   if (!decided[0].affectedRows) throw new Error("El gasto ya tiene una decisión");
   await appendActivity(ownerId, expense.propertyId, "expense", expenseId, `expense.manually_${status}`, { decidedBy: ownerId, decisionMode: "manual_ui" });
-  return (await db.select().from(propertyExpenses).where(and(eq(propertyExpenses.id, expenseId), eq(propertyExpenses.ownerId, ownerId))).limit(1))[0];
+  const updatedExpense = (await db.select().from(propertyExpenses).where(and(eq(propertyExpenses.id, expenseId), eq(propertyExpenses.ownerId, ownerId))).limit(1))[0];
+  await createNotificationIfEnabled(ownerId, { kind: status === "approved" ? "expense.manually_approved" : "expense.manually_rejected", category: "expense", propertyId: expense.propertyId, entityId: expenseId, title: status === "approved" ? "Gasto aprobado manualmente" : "Gasto rechazado manualmente", content: `${expense.description} fue ${status === "approved" ? "aprobado" : "rechazado"} mediante una decisión humana autenticada.` });
+  return updatedExpense;
 }
 
 export async function getOwnerReport(ownerId: number, propertyId: number) {
